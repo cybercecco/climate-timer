@@ -22,7 +22,16 @@ interface ClimateTimerCardConfig {
   timer_presets?: number[];
   theme?: string;
   features?: unknown[];
-  grid_options?: Record<string, unknown>;
+  grid_options?: GridOptions;
+}
+
+interface GridOptions {
+  columns?: number | "full";
+  rows?: number;
+  min_columns?: number;
+  max_columns?: number;
+  min_rows?: number;
+  max_rows?: number;
 }
 
 interface ScheduleInfo {
@@ -72,7 +81,40 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
   }
 
   public getCardSize(): number {
-    return 4;
+    const native = this._nativeCard as LovelaceCard | undefined;
+    if (native?.getCardSize) {
+      const size = native.getCardSize();
+      return typeof size === "number" ? size : 7;
+    }
+    return 7;
+  }
+
+  public getGridOptions(): GridOptions {
+    const native = this._nativeCard as
+      | (LovelaceCard & { getGridOptions?: () => GridOptions })
+      | undefined;
+    if (native?.getGridOptions) {
+      return native.getGridOptions();
+    }
+
+    const opts = this._config?.grid_options;
+    const features = this._config?.features?.length ?? 0;
+    let rows = opts?.rows ?? 5;
+    let min_rows = opts?.min_rows ?? 2;
+    if (features > 0) {
+      const featureHeight = Math.ceil((features * 2) / 3);
+      rows += featureHeight;
+      min_rows += featureHeight;
+    }
+
+    return {
+      columns: opts?.columns ?? 12,
+      rows,
+      min_columns: opts?.min_columns ?? 6,
+      min_rows,
+      max_rows: opts?.max_rows,
+      max_columns: opts?.max_columns,
+    };
   }
 
   public setConfig(config: ClimateTimerCardConfig): void {
@@ -345,13 +387,29 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
   static styles = css`
     :host {
       display: block;
+      position: relative;
+      height: 100%;
+      box-sizing: border-box;
     }
     .wrapper {
       position: relative;
       display: block;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
     }
     #native-slot {
       display: block;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #native-slot > * {
+      display: block;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
     }
     .timer-btn {
       position: absolute;
