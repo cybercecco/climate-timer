@@ -66,18 +66,22 @@ async def _register_frontend(hass: HomeAssistant) -> None:
 
 async def _ensure_lovelace_resource(hass: HomeAssistant) -> None:
     """Register the card as a Lovelace resource if missing."""
-    lovelace_data = hass.data.get(LOVELACE_DATA)
-    if lovelace_data is None:
-        return
+    try:
+        lovelace_data = hass.data.get(LOVELACE_DATA)
+        if lovelace_data is None:
+            _LOGGER.debug("Lovelace not ready, skipping automatic resource registration")
+            return
 
-    resources = lovelace_data["resources"]
-    existing = await resources.async_items()
-    if any(item.get("url") == CARD_URL for item in existing):
-        return
+        resources = lovelace_data["resources"]
+        existing = await resources.async_items()
+        if any(item.get("url") == CARD_URL for item in existing):
+            return
 
-    await resources.async_create_item(
-        {"url": CARD_URL, "type": "module", "id": f"{DOMAIN}-card"}
-    )
+        await resources.async_create_item(
+            {"url": CARD_URL, "type": "module", "id": f"{DOMAIN}-card"}
+        )
+    except Exception as err:
+        _LOGGER.warning("Could not register Lovelace resource: %s", err)
 
 
 def _parse_when(hass: HomeAssistant, call: ServiceCall) -> datetime | None:

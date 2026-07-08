@@ -13,6 +13,7 @@ from typing import Any
 import websockets
 
 REPO = "cybercecco/climate-timer"
+REPO_NUMERIC_ID = "1293187058"
 CARD_TYPE = "custom:climate-timer-card"
 CLIMATE_CARD_TYPES = {
     "thermostat",
@@ -27,40 +28,34 @@ def replace_cards(node: Any, sensibo_entities: set[str]) -> tuple[Any, int]:
     """Recursively replace climate cards for Sensibo entities."""
     replaced = 0
     if isinstance(node, list):
-        return [replace_cards(item, sensibo_entities)[0] for item in node], sum(
-            replace_cards(item, sensibo_entities)[1] for item in node
-        )
+        output = []
+        for item in node:
+            new_item, count = replace_cards(item, sensibo_entities)
+            output.append(new_item)
+            replaced += count
+        return output, replaced
     if not isinstance(node, dict):
         return node, 0
 
     result = copy.deepcopy(node)
     card_type = result.get("type", "")
     entity = result.get("entity")
-    entities = result.get("entities")
 
-    if card_type in CLIMATE_CARD_TYPES or "climate" in card_type:
-        target = entity
-        if isinstance(entities, list) and len(entities) == 1:
-            target = entities[0]
-        if isinstance(target, str) and target in sensibo_entities:
+    if card_type in CLIMATE_CARD_TYPES or (
+        "climate" in card_type and card_type != CARD_TYPE
+    ):
+        if isinstance(entity, str) and entity in sensibo_entities:
             result["type"] = CARD_TYPE
-            result["entity"] = target
-            result.pop("entities", None)
+            result["entity"] = entity
+            result.pop("features", None)
             result.setdefault("timer_presets", [30, 60, 120])
             result.setdefault("show_current_as_primary", True)
             replaced += 1
 
     for key, value in list(result.items()):
-        if key == "cards" and isinstance(value, list):
-            new_cards = []
-            for card in value:
-                new_card, count = replace_cards(card, sensibo_entities)
-                new_cards.append(new_card)
-                replaced += count
-            result["cards"] = new_cards
-        elif key == "card" and isinstance(value, dict):
-            new_card, count = replace_cards(value, sensibo_entities)
-            result["card"] = new_card
+        if isinstance(value, (dict, list)):
+            new_value, count = replace_cards(value, sensibo_entities)
+            result[key] = new_value
             replaced += count
 
     return result, replaced
@@ -92,19 +87,15 @@ async def run(url: str, token: str) -> None:
 
         print("Adding HACS custom repository...")
         add_repo = await call(
-            "hacs/repository",
-            action="add",
+            "hacs/repositories/add",
             repository=REPO,
-            category="integration",
         )
         print(json.dumps(add_repo, indent=2)[:400])
 
         print("Installing Climate Timer from HACS...")
         install = await call(
-            "hacs/repository",
-            action="download",
-            repository=REPO,
-            category="integration",
+            "hacs/repository/download",
+            repository=REPO_NUMERIC_ID,
         )
         print(json.dumps(install, indent=2)[:600])
 
