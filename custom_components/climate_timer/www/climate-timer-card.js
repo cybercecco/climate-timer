@@ -87,6 +87,7 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
         this._schedule = {};
         this._offTime = "22:00";
         this._onTime = "07:00";
+        this._timerDialogOpen = false;
     }
     static async getConfigElement() {
         await Promise.resolve().then(function () { return climateTimerCardEditor; });
@@ -99,7 +100,7 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
         };
     }
     getCardSize() {
-        return 6;
+        return 4;
     }
     setConfig(config) {
         if (!config.entity) {
@@ -121,6 +122,9 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
             this._unsub();
             this._unsub = undefined;
         }
+    }
+    _hasActiveSchedule() {
+        return Boolean(this._schedule.off || this._schedule.on);
     }
     _subscribeUpdates() {
         if (!this.hass || this._unsub)
@@ -196,7 +200,6 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
             entity_id: this._config.entity,
             ...data,
         });
-        await this._loadSchedule();
     }
     async _callTimer(service, data = {}) {
         await this.hass.callService("climate_timer", service, {
@@ -204,6 +207,13 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
             ...data,
         });
         await this._loadSchedule();
+    }
+    _openTimerDialog(ev) {
+        ev.stopPropagation();
+        this._timerDialogOpen = true;
+    }
+    _closeTimerDialog() {
+        this._timerDialogOpen = false;
     }
     _renderArc(target, min = 16, max = 30) {
         const value = target ?? (min + max) / 2;
@@ -222,10 +232,7 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
         const ey = cy + r * Math.sin(endRad);
         return b `
       <svg viewBox="0 0 200 120" class="arc">
-        <path
-          class="arc-track"
-          d="M 28 100 A 72 72 0 1 1 172 100"
-        ></path>
+        <path class="arc-track" d="M 28 100 A 72 72 0 1 1 172 100"></path>
         <path
           class="arc-value"
           d="M 28 100 A 72 72 0 ${large} 1 ${x} ${y}"
@@ -251,86 +258,96 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
       </div>
     `;
     }
-    _renderTimerSection() {
+    _renderTimerDialog(state) {
         const presets = this._config.timer_presets ?? [30, 60, 120];
         return b `
-      <div class="timer-section">
-        <div class="timer-title">Timer spegnimento</div>
-        <div class="preset-row">
-          ${presets.map((minutes) => b `
-              <button
-                class="chip"
-                @click=${() => this._callTimer("schedule_off", { minutes })}
-              >
-                ${minutes} min
-              </button>
-            `)}
+      <ha-dialog
+        .open=${this._timerDialogOpen}
+        @closed=${this._closeTimerDialog}
+        hideActions
+      >
+        <div slot="heading" class="dialog-heading">
+          <ha-icon icon="mdi:timer-outline"></ha-icon>
+          <span>Timer · ${this._title(state)}</span>
         </div>
-        <div class="time-row">
-          <label>
-            <span>Spegni alle</span>
-            <input
-              type="time"
-              .value=${this._offTime}
-              @change=${(ev) => {
+        <div class="dialog-body">
+          <div class="timer-title">Timer spegnimento</div>
+          <div class="preset-row">
+            ${presets.map((minutes) => b `
+                <button
+                  class="chip"
+                  @click=${() => this._callTimer("schedule_off", { minutes })}
+                >
+                  ${minutes} min
+                </button>
+              `)}
+          </div>
+          <div class="time-row">
+            <label>
+              <span>Spegni alle</span>
+              <input
+                type="time"
+                .value=${this._offTime}
+                @change=${(ev) => {
             this._offTime = ev.target.value;
         }}
-            />
-          </label>
-          <button
-            class="chip primary"
-            @click=${() => this._callTimer("schedule_off", { time: this._offTime })}
-          >
-            Programma
-          </button>
-        </div>
-        ${this._schedule.off
+              />
+            </label>
+            <button
+              class="chip primary"
+              @click=${() => this._callTimer("schedule_off", { time: this._offTime })}
+            >
+              Programma
+            </button>
+          </div>
+          ${this._schedule.off
             ? b `
-              <div class="schedule active">
-                Spegnimento: ${this._formatSchedule(this._schedule.off)}
-                <button
-                  class="link"
-                  @click=${() => this._callTimer("cancel", { action: "off" })}
-                >
-                  Annulla
-                </button>
-              </div>
-            `
+                <div class="schedule active">
+                  Spegnimento: ${this._formatSchedule(this._schedule.off)}
+                  <button
+                    class="link"
+                    @click=${() => this._callTimer("cancel", { action: "off" })}
+                  >
+                    Annulla
+                  </button>
+                </div>
+              `
             : A}
 
-        <div class="timer-title">Accensione programmata</div>
-        <div class="time-row">
-          <label>
-            <span>Accendi alle</span>
-            <input
-              type="time"
-              .value=${this._onTime}
-              @change=${(ev) => {
+          <div class="timer-title spaced">Accensione programmata</div>
+          <div class="time-row">
+            <label>
+              <span>Accendi alle</span>
+              <input
+                type="time"
+                .value=${this._onTime}
+                @change=${(ev) => {
             this._onTime = ev.target.value;
         }}
-            />
-          </label>
-          <button
-            class="chip primary"
-            @click=${() => this._callTimer("schedule_on", { time: this._onTime })}
-          >
-            Programma
-          </button>
-        </div>
-        ${this._schedule.on
+              />
+            </label>
+            <button
+              class="chip primary"
+              @click=${() => this._callTimer("schedule_on", { time: this._onTime })}
+            >
+              Programma
+            </button>
+          </div>
+          ${this._schedule.on
             ? b `
-              <div class="schedule active">
-                Accensione: ${this._formatSchedule(this._schedule.on)}
-                <button
-                  class="link"
-                  @click=${() => this._callTimer("cancel", { action: "on" })}
-                >
-                  Annulla
-                </button>
-              </div>
-            `
+                <div class="schedule active">
+                  Accensione: ${this._formatSchedule(this._schedule.on)}
+                  <button
+                    class="link"
+                    @click=${() => this._callTimer("cancel", { action: "on" })}
+                  >
+                    Annulla
+                  </button>
+                </div>
+              `
             : A}
-      </div>
+        </div>
+      </ha-dialog>
     `;
     }
     render() {
@@ -343,12 +360,21 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
         const mode = this._hvacMode(state);
         const min = state.attributes.min_temp ?? 16;
         const max = state.attributes.max_temp ?? 30;
-        const step = state.attributes.target_temp_step ?? 0.5;
         const showCurrent = this._config.show_current_as_primary ?? true;
         return b `
       <ha-card>
         <div class="header">
           <div class="name">${this._title(state)}</div>
+          <button
+            class="timer-btn ${this._hasActiveSchedule() ? "active" : ""}"
+            title="Timer programmato"
+            @click=${this._openTimerDialog}
+          >
+            <ha-icon icon="mdi:timer-outline"></ha-icon>
+            ${this._hasActiveSchedule()
+            ? b `<span class="timer-dot"></span>`
+            : A}
+          </button>
         </div>
 
         <div class="main">
@@ -369,214 +395,222 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
                   </div>
                 `
             : A}
-            <div class="stepper">
-              <button
-                class="round"
-                @click=${() => this._callClimate("set_temperature", {
-            temperature: Math.max(min, (target ?? min) - step),
-        })}
-              >
-                <ha-icon icon="mdi:minus"></ha-icon>
-              </button>
-              <button
-                class="round"
-                @click=${() => this._callClimate("set_temperature", {
-            temperature: Math.min(max, (target ?? max) + step),
-        })}
-              >
-                <ha-icon icon="mdi:plus"></ha-icon>
-              </button>
-            </div>
           </div>
         </div>
 
         ${this._renderModes(state)}
-        ${this._renderTimerSection()}
+        ${this._renderTimerDialog(state)}
       </ha-card>
     `;
     }
 };
 ClimateTimerCard.styles = i$3 `
-        :host {
-          display: block;
-        }
-        ha-card {
-          overflow: hidden;
-          padding-bottom: 12px;
-        }
-        .warning {
-          padding: 16px;
-          color: var(--error-color);
-        }
-        .header {
-          padding: 16px 16px 0;
-          text-align: center;
-        }
-        .name {
-          font-size: 1.1rem;
-          font-weight: 500;
-        }
-        .main {
-          position: relative;
-          height: 150px;
-        }
-        .arc {
-          width: 100%;
-          height: 150px;
-        }
-        .arc-track,
-        .arc-value {
-          fill: none;
-          stroke-width: 8;
-          stroke-linecap: round;
-        }
-        .arc-track {
-          stroke: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
-        }
-        .arc-value {
-          stroke: var(--primary-color);
-        }
-        .arc-knob {
-          fill: var(--primary-text-color);
-        }
-        .arc-end {
-          fill: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.35);
-        }
-        .center {
-          position: absolute;
-          inset: 28px 0 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-        }
-        .mode-label {
-          font-size: 0.95rem;
-          opacity: 0.8;
-          text-transform: capitalize;
-        }
-        .temperature {
-          display: flex;
-          align-items: flex-start;
-          line-height: 1;
-        }
-        .current {
-          font-size: 2.4rem;
-          font-weight: 300;
-        }
-        .unit {
-          font-size: 1rem;
-          margin-top: 0.35rem;
-          margin-left: 2px;
-        }
-        .target-row {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          opacity: 0.75;
-          font-size: 0.85rem;
-        }
-        .stepper {
-          display: flex;
-          gap: 16px;
-          margin-top: 8px;
-          pointer-events: auto;
-        }
-        .round {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.25);
-          background: transparent;
-          color: inherit;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-        .modes {
-          display: flex;
-          justify-content: center;
-          gap: 8px;
-          padding: 8px 12px 12px;
-        }
-        .mode {
-          width: 44px;
-          height: 44px;
-          border: none;
-          border-radius: 12px;
-          background: transparent;
-          color: inherit;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .mode.active {
-          background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
-        }
-        .timer-section {
-          border-top: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.08);
-          padding: 12px 16px 0;
-        }
-        .timer-title {
-          font-size: 0.85rem;
-          font-weight: 600;
-          margin-bottom: 8px;
-          opacity: 0.85;
-        }
-        .preset-row,
-        .time-row {
-          display: flex;
-          gap: 8px;
-          align-items: end;
-          flex-wrap: wrap;
-          margin-bottom: 10px;
-        }
-        .chip {
-          border: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.18);
-          background: transparent;
-          color: inherit;
-          border-radius: 999px;
-          padding: 8px 14px;
-          cursor: pointer;
-        }
-        .chip.primary {
-          background: var(--primary-color);
-          border-color: var(--primary-color);
-          color: var(--text-primary-color, #fff);
-        }
-        label {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          font-size: 0.75rem;
-          opacity: 0.8;
-        }
-        input[type="time"] {
-          background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.06);
-          border: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.18);
-          border-radius: 8px;
-          color: inherit;
-          padding: 8px 10px;
-        }
-        .schedule {
-          font-size: 0.8rem;
-          opacity: 0.85;
-          margin-bottom: 12px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .link {
-          border: none;
-          background: none;
-          color: var(--primary-color);
-          cursor: pointer;
-          padding: 0;
-        }
-      `;
+    :host {
+      display: block;
+    }
+    ha-card {
+      overflow: hidden;
+    }
+    .warning {
+      padding: 16px;
+      color: var(--error-color);
+    }
+    .header {
+      position: relative;
+      padding: 16px 48px 0 16px;
+      text-align: center;
+    }
+    .name {
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+    .timer-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.75;
+    }
+    .timer-btn:hover,
+    .timer-btn.active {
+      opacity: 1;
+      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.08);
+    }
+    .timer-dot {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary-color);
+    }
+    .main {
+      position: relative;
+      height: 132px;
+    }
+    .arc {
+      width: 100%;
+      height: 132px;
+    }
+    .arc-track,
+    .arc-value {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+    }
+    .arc-track {
+      stroke: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
+    }
+    .arc-value {
+      stroke: var(--primary-color);
+    }
+    .arc-knob {
+      fill: var(--primary-text-color);
+    }
+    .arc-end {
+      fill: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.35);
+    }
+    .center {
+      position: absolute;
+      inset: 20px 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .mode-label {
+      font-size: 0.95rem;
+      opacity: 0.8;
+      text-transform: capitalize;
+    }
+    .temperature {
+      display: flex;
+      align-items: flex-start;
+      line-height: 1;
+    }
+    .current {
+      font-size: 2.4rem;
+      font-weight: 300;
+    }
+    .unit {
+      font-size: 1rem;
+      margin-top: 0.35rem;
+      margin-left: 2px;
+    }
+    .target-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0.75;
+      font-size: 0.85rem;
+    }
+    .modes {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 4px 12px 12px;
+    }
+    .mode {
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 12px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mode.active {
+      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
+    }
+    ha-dialog {
+      --dialog-content-padding: 0;
+    }
+    .dialog-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+    .dialog-body {
+      padding: 8px 24px 24px;
+      min-width: min(360px, 90vw);
+    }
+    .timer-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      opacity: 0.85;
+    }
+    .timer-title.spaced {
+      margin-top: 16px;
+    }
+    .preset-row,
+    .time-row {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .chip {
+      border: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.18);
+      background: transparent;
+      color: inherit;
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .chip.primary {
+      background: var(--primary-color);
+      border-color: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+    input[type="time"] {
+      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.06);
+      border: 1px solid rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.18);
+      border-radius: 8px;
+      color: inherit;
+      padding: 8px 10px;
+    }
+    .schedule {
+      font-size: 0.8rem;
+      opacity: 0.85;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .link {
+      border: none;
+      background: none;
+      color: var(--primary-color);
+      cursor: pointer;
+      padding: 0;
+    }
+  `;
 __decorate([
     n({ attribute: false })
 ], ClimateTimerCard.prototype, "hass", void 0);
@@ -592,6 +626,9 @@ __decorate([
 __decorate([
     r()
 ], ClimateTimerCard.prototype, "_onTime", void 0);
+__decorate([
+    r()
+], ClimateTimerCard.prototype, "_timerDialogOpen", void 0);
 ClimateTimerCard = __decorate([
     t("climate-timer-card")
 ], ClimateTimerCard);
