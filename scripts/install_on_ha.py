@@ -47,7 +47,6 @@ def replace_cards(node: Any, sensibo_entities: set[str]) -> tuple[Any, int]:
         if isinstance(entity, str) and entity in sensibo_entities:
             result["type"] = CARD_TYPE
             result["entity"] = entity
-            result.pop("features", None)
             result.setdefault("timer_presets", [30, 60, 120])
             result.setdefault("show_current_as_primary", True)
             replaced += 1
