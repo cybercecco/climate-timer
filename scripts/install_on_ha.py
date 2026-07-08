@@ -48,6 +48,8 @@ def replace_cards(node: Any, sensibo_entities: set[str]) -> tuple[Any, int]:
             result["type"] = CARD_TYPE
             result["entity"] = entity
             result.setdefault("timer_presets", [30, 60, 120])
+            if not result.get("features"):
+                result["features"] = [{"type": "climate-hvac-modes"}]
             result.setdefault("show_current_as_primary", True)
             replaced += 1
 

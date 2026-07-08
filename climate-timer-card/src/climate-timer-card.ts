@@ -39,7 +39,7 @@ interface ScheduleInfo {
   on?: string | null;
 }
 
-declare global {
+const DEFAULT_FEATURES = [{ type: "climate-hvac-modes" }];
   interface Window {
     customCards?: Array<{
       type: string;
@@ -98,7 +98,7 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
     }
 
     const opts = this._config?.grid_options;
-    const features = this._config?.features?.length ?? 0;
+    const features = this._cardFeatures().length;
     let rows = opts?.rows ?? 5;
     let min_rows = opts?.min_rows ?? 2;
     if (features > 0) {
@@ -160,16 +160,22 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
     }
   }
 
+  private _cardFeatures(): unknown[] {
+    return this._config.features?.length
+      ? this._config.features
+      : DEFAULT_FEATURES;
+  }
+
   private _thermostatConfig(): Record<string, unknown> {
     const config: Record<string, unknown> = {
       type: "thermostat",
       entity: this._config.entity,
+      features: this._cardFeatures(),
     };
     if (this._config.name !== undefined) config.name = this._config.name;
     if (this._config.show_current_as_primary !== undefined) {
       config.show_current_as_primary = this._config.show_current_as_primary;
     }
-    if (this._config.features !== undefined) config.features = this._config.features;
     if (this._config.theme !== undefined) config.theme = this._config.theme;
     if (this._config.grid_options !== undefined) {
       config.grid_options = this._config.grid_options;

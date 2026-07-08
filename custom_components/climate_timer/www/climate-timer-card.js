@@ -74,6 +74,7 @@ const t$1=t=>(e,o)=>{ void 0!==o?o.addInitializer(()=>{customElements.define(t,e
 
 var t,r;!function(e){e.language="language",e.system="system",e.comma_decimal="comma_decimal",e.decimal_comma="decimal_comma",e.space_comma="space_comma",e.none="none";}(t||(t={})),function(e){e.language="language",e.system="system",e.am_pm="12",e.twenty_four="24";}(r||(r={}));var ne=function(e,t,r,n){n=n||{},r=null==r?{}:r;var i=new Event(t,{bubbles:void 0===n.bubbles||n.bubbles,cancelable:Boolean(n.cancelable),composed:void 0===n.composed||n.composed});return i.detail=r,e.dispatchEvent(i),i},ie=new Set(["call-service","divider","section","weblink","cast","select"]),ae={alert:"toggle",automation:"toggle",climate:"climate",cover:"cover",fan:"toggle",group:"group",input_boolean:"toggle",input_number:"input-number",input_select:"input-select",input_text:"input-text",light:"toggle",lock:"lock",media_player:"media-player",remote:"toggle",scene:"scene",script:"script",sensor:"sensor",timer:"timer",switch:"toggle",vacuum:"toggle",water_heater:"climate",input_datetime:"input-datetime"},oe=function(e,t){ void 0===t&&(t=false);var r=function(e,t){return n("hui-error-card",{type:"error",error:e,config:t})},n=function(e,t){var n=window.document.createElement(e);try{if(!n.setConfig)return;n.setConfig(t);}catch(n){return console.error(e,n),r(n.message,t)}return n};if(!e||"object"!=typeof e||!t&&!e.type)return r("No type defined",e);var i=e.type;if(i&&i.startsWith("custom:"))i=i.substr("custom:".length);else if(t)if(ie.has(i))i="hui-"+i+"-row";else {if(!e.entity)return r("Invalid config given.",e);var a=e.entity.split(".",1)[0];i="hui-"+(ae[a]||"text")+"-entity-row";}else i="hui-"+i+"-card";if(customElements.get(i))return n(i,e);var o=r("Custom element doesn't exist: "+e.type+".",e);o.style.display="None";var u=setTimeout(function(){o.style.display="";},2e3);return customElements.whenDefined(e.type).then(function(){clearTimeout(u),ne(o,"ll-rebuild",{},o);}),o};
 
+const DEFAULT_FEATURES = [{ type: "climate-hvac-modes" }];
 let ClimateTimerCard = class ClimateTimerCard extends i {
     constructor() {
         super(...arguments);
@@ -106,7 +107,7 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
             return native.getGridOptions();
         }
         const opts = this._config?.grid_options;
-        const features = this._config?.features?.length ?? 0;
+        const features = this._cardFeatures().length;
         let rows = opts?.rows ?? 5;
         let min_rows = opts?.min_rows ?? 2;
         if (features > 0) {
@@ -159,18 +160,22 @@ let ClimateTimerCard = class ClimateTimerCard extends i {
             this._loadSchedule();
         }
     }
+    _cardFeatures() {
+        return this._config.features?.length
+            ? this._config.features
+            : DEFAULT_FEATURES;
+    }
     _thermostatConfig() {
         const config = {
             type: "thermostat",
             entity: this._config.entity,
+            features: this._cardFeatures(),
         };
         if (this._config.name !== undefined)
             config.name = this._config.name;
         if (this._config.show_current_as_primary !== undefined) {
             config.show_current_as_primary = this._config.show_current_as_primary;
         }
-        if (this._config.features !== undefined)
-            config.features = this._config.features;
         if (this._config.theme !== undefined)
             config.theme = this._config.theme;
         if (this._config.grid_options !== undefined) {
