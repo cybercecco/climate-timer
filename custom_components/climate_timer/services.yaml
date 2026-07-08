@@ -1,0 +1,80 @@
+schedule_off:
+  name: Schedule climate off
+  description: Spegni il climate a un orario o dopo N minuti.
+  fields:
+    entity_id:
+      required: true
+      example: climate.mattia
+      selector:
+        entity:
+          domain: climate
+    minutes:
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+    time:
+      required: false
+      example: "22:30"
+      selector:
+        time: {}
+    datetime:
+      required: false
+      example: "2026-07-08 22:30:00"
+      selector:
+        datetime: {}
+
+schedule_on:
+  name: Schedule climate on
+  description: Accendi il climate a un orario specifico.
+  fields:
+    entity_id:
+      required: true
+      example: climate.mattia
+      selector:
+        entity:
+          domain: climate
+    time:
+      required: false
+      example: "07:00"
+      selector:
+        time: {}
+    datetime:
+      required: false
+      example: "2026-07-08 07:00:00"
+      selector:
+        datetime: {}
+
+cancel:
+  name: Cancel climate timer
+  description: Annulla timer di accensione/spegnimento programmati.
+  fields:
+    entity_id:
+      required: true
+      example: climate.mattia
+      selector:
+        entity:
+          domain: climate
+    action:
+      required: false
+      example: off
+      selector:
+        select:
+          options:
+            - off
+            - on
+            - all
+
+get_schedule:
+  name: Get climate schedule
+  description: Restituisce i timer programmati per un climate.
+  fields:
+    entity_id:
+      required: true
+      example: climate.mattia
+      selector:
+        entity:
+          domain: climate

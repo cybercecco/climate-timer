@@ -1,0 +1,29 @@
+{
+  "name": "climate-timer-card",
+  "version": "1.0.0",
+  "description": "Climate card clone with scheduled on/off timers for Home Assistant",
+  "main": "dist/climate-timer-card.js",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "climate",
+    "timer"
+  ],
+  "author": "fmoretto",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "rollup": "^4.28.1",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "custom-card-helpers": "^1.9.0",
+    "lit": "^3.2.1"
+  }
+}

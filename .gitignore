@@ -1,0 +1,5 @@
+node_modules/
+climate-timer-card/node_modules/
+climate-timer-card/dist/
+*.pyc
+__pycache__/

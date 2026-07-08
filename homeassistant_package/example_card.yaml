@@ -1,0 +1,8 @@
+type: custom:climate-timer-card
+entity: climate.mattia
+name: Mattia
+timer_presets:
+  - 30
+  - 60
+  - 120
+show_current_as_primary: true
