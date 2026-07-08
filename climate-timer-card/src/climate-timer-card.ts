@@ -40,6 +40,8 @@ interface ScheduleInfo {
 }
 
 const DEFAULT_FEATURES = [{ type: "climate-hvac-modes" }];
+
+declare global {
   interface Window {
     customCards?: Array<{
       type: string;
