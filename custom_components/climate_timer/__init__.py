@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-CARD_URL = "/climate-timer-card/climate-timer-card.js"
+
+def _card_version() -> str:
+    manifest = Path(__file__).parent / "manifest.json"
+    with manifest.open(encoding="utf-8") as fp:
+        return json.load(fp)["version"]
+
+CARD_PATH = "/climate-timer-card/climate-timer-card.js"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -59,9 +66,13 @@ async def _register_frontend(hass: HomeAssistant) -> None:
 
     js_path = Path(__file__).parent / "www" / "climate-timer-card.js"
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, str(js_path), cache_headers=True)]
+        [StaticPathConfig(CARD_PATH, str(js_path), cache_headers=False)]
     )
     hass.data.setdefault(DOMAIN, {})["frontend_registered"] = True
+
+
+def _card_url() -> str:
+    return f"{CARD_PATH}?v={_card_version()}"
 
 
 async def _ensure_lovelace_resource(hass: HomeAssistant) -> None:
@@ -72,13 +83,23 @@ async def _ensure_lovelace_resource(hass: HomeAssistant) -> None:
             _LOGGER.debug("Lovelace not ready, skipping automatic resource registration")
             return
 
+        card_url = _card_url()
         resources = lovelace_data.resources
         existing = await resources.async_items()
-        if any(item.get("url") == CARD_URL for item in existing):
+        stale = [
+            item
+            for item in existing
+            if item.get("url", "").startswith(CARD_PATH)
+            and item.get("url") != card_url
+        ]
+        for item in stale:
+            await resources.async_delete_item(item["id"])
+
+        if any(item.get("url") == card_url for item in existing):
             return
 
         await resources.async_create_item(
-            {"url": CARD_URL, "type": "module", "id": f"{DOMAIN}-card"}
+            {"url": card_url, "type": "module", "id": f"{DOMAIN}-card"}
         )
     except Exception as err:
         _LOGGER.warning("Could not register Lovelace resource: %s", err)
