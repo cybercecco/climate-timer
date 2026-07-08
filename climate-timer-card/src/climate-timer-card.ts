@@ -8,15 +8,11 @@ import {
 } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
+  createThing,
   HomeAssistant,
   LovelaceCard,
   LovelaceCardEditor,
 } from "custom-card-helpers";
-
-interface HassEntity {
-  state: string;
-  attributes: Record<string, unknown>;
-}
 
 interface ClimateTimerCardConfig {
   type: string;
@@ -24,6 +20,9 @@ interface ClimateTimerCardConfig {
   name?: string;
   show_current_as_primary?: boolean;
   timer_presets?: number[];
+  theme?: string;
+  features?: unknown[];
+  grid_options?: Record<string, unknown>;
 }
 
 interface ScheduleInfo {
@@ -42,17 +41,6 @@ declare global {
   }
 }
 
-const MODE_ICONS: Record<string, string> = {
-  cool: "mdi:snowflake",
-  heat: "mdi:fire",
-  fan_only: "mdi:fan",
-  dry: "mdi:water-percent",
-  auto: "mdi:autorenew",
-  off: "mdi:power",
-};
-
-const MODE_ORDER = ["cool", "heat", "fan_only", "dry", "auto", "off"];
-
 @customElement("climate-timer-card")
 export class ClimateTimerCard extends LitElement implements LovelaceCard {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -66,6 +54,8 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
   @state() private _onTime = "07:00";
 
   @state() private _timerDialogOpen = false;
+
+  private _nativeCard?: HTMLElement & { hass?: HomeAssistant; setConfig?: (c: unknown) => void };
 
   public static async getConfigElement(): Promise<LovelaceCardEditor> {
     await import("./climate-timer-card-editor");
@@ -111,6 +101,54 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
 
   private _unsub?: () => void;
 
+  protected firstUpdated(): void {
+    this._mountNativeCard();
+  }
+
+  protected updated(changed: PropertyValues): void {
+    if (changed.has("_config")) {
+      this._mountNativeCard();
+    }
+    if (this._nativeCard && changed.has("hass")) {
+      this._nativeCard.hass = this.hass;
+    }
+    if (changed.has("hass") && this.hass && !this._unsub) {
+      this._subscribeUpdates();
+      this._loadSchedule();
+    }
+  }
+
+  private _thermostatConfig(): Record<string, unknown> {
+    const config: Record<string, unknown> = {
+      type: "thermostat",
+      entity: this._config.entity,
+    };
+    if (this._config.name !== undefined) config.name = this._config.name;
+    if (this._config.show_current_as_primary !== undefined) {
+      config.show_current_as_primary = this._config.show_current_as_primary;
+    }
+    if (this._config.features !== undefined) config.features = this._config.features;
+    if (this._config.theme !== undefined) config.theme = this._config.theme;
+    if (this._config.grid_options !== undefined) {
+      config.grid_options = this._config.grid_options;
+    }
+    return config;
+  }
+
+  private _mountNativeCard(): void {
+    const slot = this.renderRoot.querySelector("#native-slot");
+    if (!slot || !this._config) return;
+
+    slot.innerHTML = "";
+    this._nativeCard = createThing(this._thermostatConfig()) as typeof this._nativeCard;
+    if (!this._nativeCard) return;
+
+    if (this.hass) {
+      this._nativeCard.hass = this.hass;
+    }
+    slot.appendChild(this._nativeCard);
+  }
+
   private _hasActiveSchedule(): boolean {
     return Boolean(this._schedule.off || this._schedule.on);
   }
@@ -131,13 +169,6 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
       });
   }
 
-  protected updated(changed: PropertyValues): void {
-    if (changed.has("hass") && this.hass && !this._unsub) {
-      this._subscribeUpdates();
-      this._loadSchedule();
-    }
-  }
-
   private async _loadSchedule(): Promise<void> {
     if (!this.hass) return;
     try {
@@ -154,33 +185,13 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
     }
   }
 
-  private _entity(): HassEntity | undefined {
-    return this.hass?.states[this._config.entity] as HassEntity | undefined;
-  }
-
-  private _title(state: HassEntity): string {
+  private _entityName(): string {
+    const state = this.hass?.states[this._config.entity];
     return (
       this._config.name ??
-      (state.attributes.friendly_name as string | undefined) ??
+      (state?.attributes?.friendly_name as string | undefined) ??
       this._config.entity
     );
-  }
-
-  private _currentTemp(state: HassEntity): number | undefined {
-    return state.attributes.current_temperature as number | undefined;
-  }
-
-  private _targetTemp(state: HassEntity): number | undefined {
-    return state.attributes.temperature as number | undefined;
-  }
-
-  private _hvacMode(state: HassEntity): string {
-    return state.state;
-  }
-
-  private _supportedModes(state: HassEntity): string[] {
-    const modes = (state.attributes.hvac_modes as string[] | undefined) ?? [];
-    return MODE_ORDER.filter((mode) => modes.includes(mode));
   }
 
   private _formatSchedule(iso?: string | null): string {
@@ -191,16 +202,6 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
       weekday: "short",
       hour: "2-digit",
       minute: "2-digit",
-    });
-  }
-
-  private async _callClimate(
-    service: string,
-    data: Record<string, unknown> = {}
-  ): Promise<void> {
-    await this.hass.callService("climate", service, {
-      entity_id: this._config.entity,
-      ...data,
     });
   }
 
@@ -216,6 +217,7 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
   }
 
   private _openTimerDialog(ev: Event): void {
+    ev.preventDefault();
     ev.stopPropagation();
     this._timerDialogOpen = true;
   }
@@ -224,56 +226,7 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
     this._timerDialogOpen = false;
   }
 
-  private _renderArc(target?: number, min = 16, max = 30): TemplateResult {
-    const value = target ?? (min + max) / 2;
-    const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
-    const angle = 135 + pct * 270;
-    const rad = (angle * Math.PI) / 180;
-    const cx = 100;
-    const cy = 100;
-    const r = 72;
-    const x = cx + r * Math.cos(rad);
-    const y = cy + r * Math.sin(rad);
-    const large = pct > 0.5 ? 1 : 0;
-    const endAngle = 135 + 270;
-    const endRad = (endAngle * Math.PI) / 180;
-    const ex = cx + r * Math.cos(endRad);
-    const ey = cy + r * Math.sin(endRad);
-
-    return html`
-      <svg viewBox="0 0 200 120" class="arc">
-        <path class="arc-track" d="M 28 100 A 72 72 0 1 1 172 100"></path>
-        <path
-          class="arc-value"
-          d="M 28 100 A 72 72 0 ${large} 1 ${x} ${y}"
-        ></path>
-        <circle class="arc-knob" cx="${x}" cy="${y}" r="8"></circle>
-        <circle class="arc-end" cx="${ex}" cy="${ey}" r="3"></circle>
-      </svg>
-    `;
-  }
-
-  private _renderModes(state: HassEntity): TemplateResult {
-    const active = this._hvacMode(state);
-    return html`
-      <div class="modes">
-        ${this._supportedModes(state).map(
-          (mode) => html`
-            <button
-              class="mode ${active === mode ? "active" : ""}"
-              title=${mode}
-              @click=${() =>
-                this._callClimate("set_hvac_mode", { hvac_mode: mode })}
-            >
-              <ha-icon .icon=${MODE_ICONS[mode] ?? "mdi:help"}></ha-icon>
-            </button>
-          `
-        )}
-      </div>
-    `;
-  }
-
-  private _renderTimerDialog(state: HassEntity): TemplateResult {
+  private _renderTimerDialog(): TemplateResult {
     const presets = this._config.timer_presets ?? [30, 60, 120];
     return html`
       <ha-dialog
@@ -283,7 +236,7 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
       >
         <div slot="heading" class="dialog-heading">
           <ha-icon icon="mdi:timer-outline"></ha-icon>
-          <span>Timer · ${this._title(state)}</span>
+          <span>Timer · ${this._entityName()}</span>
         </div>
         <div class="dialog-body">
           <div class="timer-title">Timer spegnimento</div>
@@ -292,8 +245,7 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
               (minutes) => html`
                 <button
                   class="chip"
-                  @click=${() =>
-                    this._callTimer("schedule_off", { minutes })}
+                  @click=${() => this._callTimer("schedule_off", { minutes })}
                 >
                   ${minutes} min
                 </button>
@@ -372,58 +324,21 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
   }
 
   protected render(): TemplateResult {
-    const state = this._entity();
-    if (!state) {
-      return html`<ha-card><div class="warning">Entity not found</div></ha-card>`;
-    }
-
-    const current = this._currentTemp(state);
-    const target = this._targetTemp(state);
-    const mode = this._hvacMode(state);
-    const min = (state.attributes.min_temp as number | undefined) ?? 16;
-    const max = (state.attributes.max_temp as number | undefined) ?? 30;
-    const showCurrent = this._config.show_current_as_primary ?? true;
-
     return html`
-      <ha-card>
-        <div class="header">
-          <div class="name">${this._title(state)}</div>
-          <button
-            class="timer-btn ${this._hasActiveSchedule() ? "active" : ""}"
-            title="Timer programmato"
-            @click=${this._openTimerDialog}
-          >
-            <ha-icon icon="mdi:timer-outline"></ha-icon>
-            ${this._hasActiveSchedule()
-              ? html`<span class="timer-dot"></span>`
-              : nothing}
-          </button>
-        </div>
-
-        <div class="main">
-          ${this._renderArc(target, min, max)}
-          <div class="center">
-            <div class="mode-label">${mode === "off" ? "Off" : mode}</div>
-            <div class="temperature">
-              ${showCurrent && current != null
-                ? html`<span class="current">${current.toFixed(1)}</span>`
-                : html`<span class="current">${target?.toFixed(0) ?? "--"}</span>`}
-              <span class="unit">°C</span>
-            </div>
-            ${target != null
-              ? html`
-                  <div class="target-row">
-                    <ha-icon icon="mdi:account"></ha-icon>
-                    <span>${target.toFixed(0)} °C</span>
-                  </div>
-                `
-              : nothing}
-          </div>
-        </div>
-
-        ${this._renderModes(state)}
-        ${this._renderTimerDialog(state)}
-      </ha-card>
+      <div class="wrapper">
+        <div id="native-slot"></div>
+        <button
+          class="timer-btn ${this._hasActiveSchedule() ? "active" : ""}"
+          title="Timer programmato"
+          @click=${this._openTimerDialog}
+        >
+          <ha-icon icon="mdi:timer-outline"></ha-icon>
+          ${this._hasActiveSchedule()
+            ? html`<span class="timer-dot"></span>`
+            : nothing}
+        </button>
+        ${this._renderTimerDialog()}
+      </div>
     `;
   }
 
@@ -431,42 +346,34 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
     :host {
       display: block;
     }
-    ha-card {
-      overflow: hidden;
-    }
-    .warning {
-      padding: 16px;
-      color: var(--error-color);
-    }
-    .header {
+    .wrapper {
       position: relative;
-      padding: 16px 48px 0 16px;
-      text-align: center;
+      display: block;
     }
-    .name {
-      font-size: 1.1rem;
-      font-weight: 500;
+    #native-slot {
+      display: block;
     }
     .timer-btn {
       position: absolute;
-      top: 12px;
-      right: 12px;
+      top: 10px;
+      right: 44px;
       width: 36px;
       height: 36px;
       border: none;
       border-radius: 50%;
       background: transparent;
-      color: inherit;
+      color: var(--primary-text-color, inherit);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      opacity: 0.75;
+      opacity: 0.85;
+      z-index: 2;
     }
     .timer-btn:hover,
     .timer-btn.active {
       opacity: 1;
-      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.08);
+      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.1);
     }
     .timer-dot {
       position: absolute;
@@ -476,88 +383,6 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
       height: 8px;
       border-radius: 50%;
       background: var(--primary-color);
-    }
-    .main {
-      position: relative;
-      height: 132px;
-    }
-    .arc {
-      width: 100%;
-      height: 132px;
-    }
-    .arc-track,
-    .arc-value {
-      fill: none;
-      stroke-width: 8;
-      stroke-linecap: round;
-    }
-    .arc-track {
-      stroke: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
-    }
-    .arc-value {
-      stroke: var(--primary-color);
-    }
-    .arc-knob {
-      fill: var(--primary-text-color);
-    }
-    .arc-end {
-      fill: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.35);
-    }
-    .center {
-      position: absolute;
-      inset: 20px 0 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-    }
-    .mode-label {
-      font-size: 0.95rem;
-      opacity: 0.8;
-      text-transform: capitalize;
-    }
-    .temperature {
-      display: flex;
-      align-items: flex-start;
-      line-height: 1;
-    }
-    .current {
-      font-size: 2.4rem;
-      font-weight: 300;
-    }
-    .unit {
-      font-size: 1rem;
-      margin-top: 0.35rem;
-      margin-left: 2px;
-    }
-    .target-row {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      opacity: 0.75;
-      font-size: 0.85rem;
-    }
-    .modes {
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      padding: 4px 12px 12px;
-    }
-    .mode {
-      width: 44px;
-      height: 44px;
-      border: none;
-      border-radius: 12px;
-      background: transparent;
-      color: inherit;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .mode.active {
-      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.12);
     }
     ha-dialog {
       --dialog-content-padding: 0;
@@ -639,6 +464,6 @@ export class ClimateTimerCard extends LitElement implements LovelaceCard {
 (window.customCards ??= []).push({
   type: "climate-timer-card",
   name: "Climate Timer Card",
-  description: "Climate card con timer di accensione/spegnimento programmato",
+  description: "Thermostat card nativa con timer programmato",
   preview: true,
 });
