@@ -72,7 +72,7 @@ async def _ensure_lovelace_resource(hass: HomeAssistant) -> None:
             _LOGGER.debug("Lovelace not ready, skipping automatic resource registration")
             return
 
-        resources = lovelace_data["resources"]
+        resources = lovelace_data.resources
         existing = await resources.async_items()
         if any(item.get("url") == CARD_URL for item in existing):
             return
